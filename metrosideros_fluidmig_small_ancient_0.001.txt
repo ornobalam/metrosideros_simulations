@@ -1,0 +1,76 @@
+initialize() {
+ defineConstant("L", 1000000);
+ defineConstant("L0", 14000); // between genes
+ defineConstant("L1", 6000); // gene length
+ initializeSLiMOptions(nucleotideBased=T);
+ initializeAncestralNucleotides(randomNucleotides(L)); 
+ initializeMutationTypeNuc("m1", 0.5, "f", 0.0); //neutral
+ initializeMutationTypeNuc("m2", 0.1, "g", -0.1, 0.2); // deleterious
+ initializeMutationTypeNuc("m3", 0.8, "e", 0.1); // beneficial
+ initializeGenomicElementType("g1", c(m1,m2,m3), c(0.2,0.8,0), mmJukesCantor(0.33e-8) ); 
+ for (start in seq(from=L0, to=L-1, by=(L0+L1))) // coding regions
+  initializeGenomicElement(g1, start, (start+L1)-1); 
+ initializeGenomicElementType("g2", c(m1,m2,m3), c(1,0,0), mmJukesCantor(0.33e-8) );
+ for (start in seq(from=0, to=L-1, by=(L0+L1))) // non-coding regions
+  initializeGenomicElement(g2, start, (start+L0)-1); 
+
+
+// create random recombination regions
+ ends = c(sort(sample(0:(L-2), 999)), L-1);
+ rates = runif(1000, 1e-9, 1e-7);
+ initializeRecombinationRate(rates, ends); 
+}
+
+// Create ancestral population for burn-in
+// Size of all population, N = 10000, 50000, 100000, for small, medium, and large, respectively
+1 { sim.addSubpop("p0", 10000); }
+
+// Split between ABCD and outgroup; this represents 100,000 generations ago
+50000 late() { sim.addSubpopSplit("p1",10000,p0);
+	sim.addSubpopSplit("p2",10000,p0);
+ }
+
+// Remove ancestral population
+50001 { p0.setSubpopulationSize(0); }
+
+// Split ABCD into AB and CD 50,000 generations ago
+// Adjust migration rates here
+100000 late() { sim.addSubpopSplit("p3", 10000, p1);
+ 	 sim.addSubpopSplit("p4", 10000, p1);      
+         p3.setMigrationRates(p4, 0.001);
+	 p4.setMigrationRates(p3, 0.001);
+ }
+
+// Remove ABCD
+100001 { p1.setSubpopulationSize(0); }
+
+// Split CD into C and D 5,000 generations later (45,000 generations ago)
+105000 late() { sim.addSubpopSplit("p5", 10000, p4);           
+         sim.addSubpopSplit("p6", 10000, p4);
+ }
+
+// Remove CD
+105001 { p4.setSubpopulationSize(0); }
+
+// Split AB into A and B 10,500 generations later (34,500 generations ago)
+115500 late() { sim.addSubpopSplit("p7", 10000, p3);
+         sim.addSubpopSplit("p8", 10000, p3); 
+ }                 
+
+// Remove AB
+115501 { p3.setSubpopulationSize(0); }
+
+150000 late() {
+
+// obtain a random sample of genomes from each population and output as vcf
+ pO =  p2.sampleIndividuals(10).genomes;
+ pC =  p5.sampleIndividuals(10).genomes; 
+ pD =  p6.sampleIndividuals(10).genomes; 
+ pA =  p7.sampleIndividuals(10).genomes; 
+ pB =  p8.sampleIndividuals(10).genomes; 
+ 
+ c(pO, pA, pB, pC, pD).outputVCF( filePath = "/scratch/oa832/slim/jae/fluidmig_small_ancient_0.001.vcf", outputNonnucleotides  = F );
+
+}
+
+150001 { sim.simulationFinished(); }
